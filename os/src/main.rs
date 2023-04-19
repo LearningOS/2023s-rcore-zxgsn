@@ -92,6 +92,8 @@ fn kernel_log_info() {
     error!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 }
 
+
+
 #[no_mangle]
 /// the rust entry-point of os
 pub fn rust_main() -> ! {

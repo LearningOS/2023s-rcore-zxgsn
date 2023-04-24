@@ -1,6 +1,10 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
+use crate::task::{append_to_memset, pay_back, push};
+
+use super::{
+    frame_alloc, FrameTracker, MapPermission, PhysPageNum, StepByOne, VirtAddr, VirtPageNum
+};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -119,6 +123,7 @@ impl PageTable {
                 break;
             }
             if !pte.is_valid() {
+                // println!("here bug");
                 return None;
             }
             ppn = pte.ppn();
@@ -127,17 +132,26 @@ impl PageTable {
     }
     /// set the map between virtual page number and physical page number
     #[allow(unused)]
-    pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+    pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) -> bool {
         let pte = self.find_pte_create(vpn).unwrap();
+        if pte.is_valid() {
+            return false;
+        }
         assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V);
+        //println!("{}");
+        true
     }
     /// remove the map between virtual page number and physical page number
     #[allow(unused)]
-    pub fn unmap(&mut self, vpn: VirtPageNum) {
+    pub fn unmap(&mut self, vpn: VirtPageNum) -> bool {
         let pte = self.find_pte(vpn).unwrap();
-        assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
+        // assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
+        if !pte.is_valid() {
+            return false;
+        }
         *pte = PageTableEntry::empty();
+        true
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -170,4 +184,132 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+/// get ppn
+pub fn tran_vir_to_phy(usr_token: usize, vaddr: VirtAddr) -> PhysPageNum {
+    let page_table = PageTable::from_token(usr_token);
+    let vpn = vaddr.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    // let kernel_token = KERNEL_SPACE.exclusive_access().token();
+    // PageTable::from_token(kernel_token).map(vpn, ppn, PTEFlags::R | PTEFlags::W | PTEFlags::X);
+    ppn
+
+    // let page = ppn.get_mut();
+}
+
+/// do a map
+pub fn successful_map(
+    // token: usize,
+    start: usize,
+    //mut vpn_vec: Vec<VirtPageNum>,
+    len: usize,
+    port: usize,
+) -> bool {
+    // let memory_set = get_memory_set();
+    let end = start + len;
+    let mut map_perm = MapPermission::U;
+    // bits += 1; // v
+    if port & 0x1 == 1 {
+        map_perm |= MapPermission::R; // r
+    }
+    if (port >> 1) & 0x1 == 1 {
+        map_perm |= MapPermission::W; // w
+    }
+    if (port >> 2) & 0x1 == 1 {
+        map_perm |= MapPermission::X; // x
+    }
+    // let pte = self.find_pte_create(vpn).unwrap();
+    // assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
+    // let memory_area = MapArea::new(start.into(), (end).into(), MapType::Framed, map_perm);
+    if !push(start, end, map_perm) {
+        return false;
+    }
+
+    if append_to_memset(start, end) {
+        true
+    } else {
+        false
+    }
+
+    /*memory_set.push(
+        memory_area,
+        None,
+    );
+    if memory_set.append_to(start.into(), end.into()) {
+        return true;
+    } else {
+        false
+    }*/
+
+    // MemorySet
+
+    /*let mut page_table = PageTable::from_token(token);
+    let end = start + len;
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let mut vpn = start_va.floor();
+        println!("pagenum:{}", vpn.0);
+        if page_table.translate(vpn).is_none() {
+            // 说明该段虚拟地址空间未被映射， 符合要求
+            // 申请物理内存 按页分配并映射
+            let frame = frame_alloc().unwrap();
+            let ppn = frame.ppn;
+            // page_table.frames.push(frame);
+            let mut bits: u8 = 0;
+            // bits += 1; // v
+            if port & 0x1 == 1 {
+                bits += 2; // r
+            }
+            if (port >> 1) & 0x1 == 1 {
+                bits += 4; // w
+            }
+            if (port >> 2) & 0x1 == 1 {
+                bits += 8; // x
+            }
+            bits += 16; // 置U位为1
+
+            let pte_flags = PTEFlags::from_bits(bits).unwrap();
+            page_table.map(vpn, ppn, pte_flags);
+
+            // println!("{}", pte_flags.bits);
+        } else {
+            //println!("地址空间已存在映射");
+            println!("bug here");
+            return false;
+        }
+        vpn.step();
+        let mut end_va: VirtAddr = vpn.into();
+        end_va = end_va.min(VirtAddr::from(end));
+        start = end_va.into();
+    }
+    true*/
+}
+
+/// unmap
+pub fn successful_unmap(token: usize, mut start: usize, len: usize) -> bool {
+    // let page_count = len / 4096;
+    let begin = start;
+    let mut page_table = PageTable::from_token(token);
+    let end = start + len;
+
+    while start < end {
+        // 先进先出
+        //let vpn = vpn_vec.pop().unwrap();
+        let start_va = VirtAddr::from(start);
+        let mut vpn = start_va.floor();
+        if page_table.translate(vpn).is_none() {
+            return false;
+        } else {
+            if !page_table.unmap(vpn) {
+                return false;
+            }
+        }
+        vpn.step();
+        let mut end_va: VirtAddr = vpn.into();
+        end_va = end_va.min(VirtAddr::from(end));
+        start = end_va.into();
+    }
+    pay_back(begin, end);
+    true
 }

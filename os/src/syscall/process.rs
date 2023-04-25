@@ -61,12 +61,14 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     let ppn2 = tran_vir_to_phy(token, vaddr2);
     // println!("1 = {}, 2 = {}", usize::from(ppn), usize::from(ppn2));
     if ppn != ppn2 {
+        println!("不在同一个页面上");
         let tv = ppn.get_mut::<usize>();
         let tv2 = ppn2.get_mut::<usize>();
         *tv = us / 1_000_000;
         *tv2 = us % 1_000_000;
     } else {
         let tv = ppn.get_mut::<TimeVal>();
+        // println!("写入页面：{}", ppn.0);
         *tv = TimeVal {
             sec: us / 1_000_000,
             usec: us % 1_000_000,

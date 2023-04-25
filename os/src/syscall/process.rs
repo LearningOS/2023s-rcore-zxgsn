@@ -5,12 +5,12 @@
 
 use crate::{
     config::MAX_SYSCALL_NUM,
-    mm::{successful_map, successful_unmap, tran_vir_to_phy, VirtAddr},
+    mm::{successful_map, successful_unmap, tran_vir_to_phy, PhysAddr, VirtAddr},
     task::{
-        change_program_brk, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        change_program_brk, current_user_token, exit_current_and_run_next, get_current_task_state,
+        get_init_time, get_tcb_syscall_times, suspend_current_and_run_next, TaskStatus,
     },
-    timer::get_time_us,
+    timer::{get_time_ms, get_time_us},
 };
 
 #[repr(C)]
@@ -55,26 +55,18 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     // let usr_token = current_user_token();
     // 用户空间的虚拟地址
     let vaddr: VirtAddr = (_ts as usize).into();
+    let offset = vaddr.page_offset();
     let ppn = tran_vir_to_phy(token, vaddr);
+    let start_addr = PhysAddr::from(ppn);
+    let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
     let us = get_time_us();
-    let vaddr2: VirtAddr = ((_ts as usize) + 8).into();
-    let ppn2 = tran_vir_to_phy(token, vaddr2);
-    // println!("1 = {}, 2 = {}", usize::from(ppn), usize::from(ppn2));
-    if ppn != ppn2 {
-        println!("不在同一个页面上");
-        let tv = ppn.get_mut::<usize>();
-        let tv2 = ppn2.get_mut::<usize>();
-        *tv = us / 1_000_000;
-        *tv2 = us % 1_000_000;
-    } else {
-        let tv = ppn.get_mut::<TimeVal>();
-        // println!("写入页面：{}", ppn.0);
-        *tv = TimeVal {
-            sec: us / 1_000_000,
-            usec: us % 1_000_000,
-        };
-    }
-
+    let tv = phy_addr.get_mut::<TimeVal>();
+    //  在复习地址空间之前一直对ppn取get_mut ..., 完全忘记了offset的存在.......
+    // println!("写入页面：{}", ppn.0);
+    *tv = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
     0
 }
 
@@ -83,7 +75,25 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
-    -1
+    let status = get_current_task_state();
+    let time = get_time_ms() - get_init_time();
+    let syscall_times = get_tcb_syscall_times();
+
+    let token = current_user_token();
+    // let usr_token = current_user_token();
+    // 用户空间的虚拟地址
+    let vaddr: VirtAddr = (_ti as usize).into();
+    let offset = vaddr.page_offset();
+    let ppn = tran_vir_to_phy(token, vaddr);
+    let start_addr = PhysAddr::from(ppn);
+    let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
+    let ti = phy_addr.get_mut::<TaskInfo>();
+    *ti = TaskInfo {
+        status,
+        syscall_times,
+        time,
+    };
+    0
 }
 
 // YOUR JOB: Implement mmap.

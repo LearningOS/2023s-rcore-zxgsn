@@ -16,6 +16,7 @@ mod task;
 
 use core::usize;
 
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
 use crate::mm::MapPermission;
 use crate::sync::UPSafeCell;
@@ -225,6 +226,30 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    fn get_current_task_state(&self) -> TaskStatus {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_status
+    }
+
+    fn get_init_time(&self) -> usize{
+        let inner = self.inner.exclusive_access();
+        inner.tasks[0].time
+    }
+
+    fn get_tcb_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].tcb_syscall_times
+    }
+
+    fn set_tcb_syscall_times(&self, syscall_id : usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].tcb_syscall_times[syscall_id] += 1;
+    }
+
 }
 
 /// Run the first task in task list.
@@ -293,4 +318,24 @@ pub fn remove_from_memset(begin: usize, end: usize) -> bool {
 /// pay
 pub fn pay_back(begin: usize, end: usize) {
     TASK_MANAGER.pay_back(begin, end);
+}
+
+/// get state
+pub fn get_current_task_state() -> TaskStatus{
+    TASK_MANAGER.get_current_task_state()
+}
+
+/// get the init time
+pub fn get_init_time() -> usize {
+    TASK_MANAGER.get_init_time()
+}
+
+/// get tcb syscall times
+pub fn get_tcb_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_tcb_syscall_times()
+}
+
+/// set tcb syscall times
+pub fn set_tcb_syscall_times(syscall_id : usize) {
+    TASK_MANAGER.set_tcb_syscall_times(syscall_id);
 }

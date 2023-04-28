@@ -340,7 +340,6 @@ impl TaskControlBlock {
         let inner = self.inner.exclusive_access();
         inner.time
     }
-
 }
 
 #[derive(Copy, Clone, PartialEq)]

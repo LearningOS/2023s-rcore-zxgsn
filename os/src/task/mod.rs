@@ -134,24 +134,15 @@ pub fn mmap(
     let mut inner = task.inner_exclusive_access();
     let start_vpn = VirtPageNum::from(start / PAGE_SIZE);
     let end_vpn = VirtPageNum::from(end / PAGE_SIZE);
-    let mut map_perm = MapPermission::U;
-    // bits += 1; // v
-    if port & 0x1 == 1 {
-        map_perm |= MapPermission::R; // r
-    }
-    if (port >> 1) & 0x1 == 1 {
-        map_perm |= MapPermission::W; // w
-    }
-    if (port >> 2) & 0x1 == 1 {
-        map_perm |= MapPermission::X; // x
-    }
+    
     for vpn in start_vpn.0..end_vpn.0 {
         // have been alloced
         if inner.memory_set.find_vpn(VirtPageNum(vpn)) {
             return -1;
         }
     }
-    inner.memory_set.insert_framed_area(VirtAddr::from(start_vpn), VirtAddr::from(end_vpn), map_perm);
+    let permission = MapPermission::from_bits(((port << 1) | 16) as u8);
+    inner.memory_set.insert_framed_area(VirtAddr::from(start_vpn), VirtAddr::from(end_vpn), permission.unwrap());
     // check
     for vpn in start_vpn.0..end_vpn.0 {
         // have been alloced

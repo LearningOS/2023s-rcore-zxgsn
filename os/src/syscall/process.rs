@@ -174,9 +174,9 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 }
 
 /// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(_start: usize, mut _len: usize, _port: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_mmap",
         current_task().unwrap().pid.0
     );
     // 未按页对齐
@@ -186,13 +186,16 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     if (_port & !0x7 != 0) || (_port & 0x7 == 0) {
         return -1;
     }
+    if _len % 4096 != 0 {
+        _len = (_len / 4096 + 1) * 4096;
+    }
     mmap(_start, _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_munmap",
         current_task().unwrap().pid.0
     );
     if _start % PAGE_SIZE != 0 || _len % PAGE_SIZE != 0 {

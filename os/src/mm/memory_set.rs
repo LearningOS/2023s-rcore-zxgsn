@@ -300,6 +300,30 @@ impl MemorySet {
             false
         }
     }
+
+    /// find the vpn in or not
+    pub fn find_vpn(&self, vpn: VirtPageNum) -> bool {
+        let pte = self.translate(vpn);
+        match  pte {
+            Some(pte) => {
+                if pte.is_valid() {
+                    return true
+                } else {
+                    return false
+                }
+            }
+            None => false
+        }
+    }
+
+    /// delete the pte for a vpn
+    pub fn delete_pte(&mut self, vpn: VirtPageNum) {
+        for map_area in self.areas.iter_mut() {
+            if map_area.vpn_in_area(vpn) {
+                map_area.unmap_one(&mut self.page_table, vpn)
+            }
+        }
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
@@ -398,6 +422,13 @@ impl MapArea {
                 break;
             }
             current_vpn.step();
+        }
+    }
+    pub fn vpn_in_area(&self, vpn: VirtPageNum) -> bool {
+        if self.vpn_range.get_start() <= vpn && self.vpn_range.get_end() >= vpn {
+            true
+        } else {
+            false
         }
     }
 }

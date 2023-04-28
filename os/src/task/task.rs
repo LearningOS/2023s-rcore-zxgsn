@@ -1,9 +1,10 @@
 //! Types related to task management & Functions for completely changing TCB
-use super::{TaskContext, add_task};
+use super::{add_task, TaskContext};
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
@@ -68,6 +69,18 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// the beginning time
+    pub time: usize,
+
+    /// syscall_times
+    pub tcb_syscall_times: [u32; MAX_SYSCALL_NUM],
+
+    /// stride
+    pub stride: isize,
+
+    /// priority
+    pub priority: isize,
 }
 
 impl TaskControlBlockInner {
@@ -118,10 +131,14 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: 0,
+                    priority: 16,
+                    time: get_time_ms(),
+                    tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
         };
-        
+
         // prepare TrapContext in user space
         let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
         *trap_cx = TrapContext::app_init_context(
@@ -192,6 +209,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: 0,
+                    priority: 16,
+                    time: get_time_ms(),
+                    tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
         });
@@ -220,7 +241,7 @@ impl TaskControlBlock {
         let kernel_stack = kstack_alloc();
         let kernel_stack_top = kernel_stack.get_top();
         // push a task context which goes to trap_return to the top of kernel stack
-        let task_control_block = Arc::new(TaskControlBlock { 
+        let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
             inner: unsafe {
@@ -235,6 +256,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: 0,
+                    priority: 16,
+                    time: get_time_ms(),
+                    tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
         });
@@ -283,6 +308,39 @@ impl TaskControlBlock {
             None
         }
     }
+
+
+
+    /// set priority
+    pub fn set_priority(&self, priority: isize) {
+        let mut inner = self.inner.exclusive_access();
+        inner.priority = priority;
+    }
+
+    /// set stride
+    pub fn set_stride(&self, stride: isize) {
+        let mut inner = self.inner.exclusive_access();
+        inner.stride += stride;
+    }
+
+    /// get priority
+    pub fn get_priority(&self) -> isize {
+        let inner = self.inner.exclusive_access();
+        inner.priority
+    }
+
+    /// get stride
+    pub fn get_stride(&self) -> isize {
+        let inner = self.inner.exclusive_access();
+        inner.stride
+    }
+
+    /// get init time
+    pub fn get_init_time(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.time
+    }
+
 }
 
 #[derive(Copy, Clone, PartialEq)]

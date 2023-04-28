@@ -7,6 +7,7 @@
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
+use crate::config::MAX_SYSCALL_NUM;
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
@@ -44,6 +45,26 @@ impl Processor {
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
     }
+
+    /// get status
+    pub fn get_current_task_state(&mut self) -> TaskStatus {
+        self.current.take().unwrap().inner_exclusive_access().task_status
+    }
+
+    /// get time
+    pub fn get_init_time(&mut self) -> usize{
+        self.current.take().unwrap().inner_exclusive_access().time
+    }
+
+    /// get syscall_times
+    pub fn get_tcb_syscall_times(&mut self) -> [u32; MAX_SYSCALL_NUM] {
+        self.current.take().unwrap().inner_exclusive_access().tcb_syscall_times
+    }
+
+    /// set syscall_times
+    pub fn set_tcb_syscall_times(&mut self, syscall_id : usize) {
+        self.current.take().unwrap().inner_exclusive_access().tcb_syscall_times[syscall_id] += 1;
+    }
 }
 
 lazy_static! {
@@ -58,9 +79,12 @@ pub fn run_tasks() {
         if let Some(task) = fetch_task() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
             // access coming task TCB exclusively
+            // let priority = task.get_priority();
+            // task.inner_exclusive_access().stride = priority / 255;
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -108,4 +132,24 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// get state
+pub fn get_current_task_state() -> TaskStatus{
+    PROCESSOR.exclusive_access().get_current_task_state()
+}
+
+/// get the init time
+pub fn get_init_time() -> usize {
+    PROCESSOR.exclusive_access().get_init_time()
+}
+
+/// get tcb syscall times
+pub fn get_tcb_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
+    PROCESSOR.exclusive_access().get_tcb_syscall_times()
+}
+
+/// set tcb syscall times
+pub fn set_tcb_syscall_times(syscall_id : usize) {
+    PROCESSOR.exclusive_access().set_tcb_syscall_times(syscall_id);
 }

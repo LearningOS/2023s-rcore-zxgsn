@@ -2,13 +2,13 @@
 use alloc::sync::Arc;
 
 use crate::{
-    config::MAX_SYSCALL_NUM,
+    config::{MAX_SYSCALL_NUM, PAGE_SIZE},
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str, VirtAddr, PhysAddr, tran_vir_to_phy},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
-    },
+        suspend_current_and_run_next, TaskStatus, get_current_task_state, get_tcb_syscall_times, get_init_time, mmap, unmmap,
+    }, timer::{get_time_us, get_time_ms},
 };
 
 #[repr(C)]
@@ -123,10 +123,25 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time",
         current_task().unwrap().pid.0
     );
-    -1
+    // token存的是当前多级页表的根节点所在的物理页号
+    let token = current_user_token();
+    // let usr_token = current_user_token();
+    // 用户空间的虚拟地址
+    let vaddr: VirtAddr = (_ts as usize).into();
+    let offset = vaddr.page_offset();
+    let ppn = tran_vir_to_phy(token, vaddr);
+    let start_addr = PhysAddr::from(ppn);
+    let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
+    let us = get_time_us();
+    let tv = phy_addr.get_mut::<TimeVal>();
+    *tv = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
@@ -134,10 +149,28 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     trace!(
-        "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_task_info",
         current_task().unwrap().pid.0
     );
-    -1
+    let status = get_current_task_state();
+    let time = get_time_ms() - get_init_time();
+    let syscall_times = get_tcb_syscall_times();
+
+    let token = current_user_token();
+    // let usr_token = current_user_token();
+    // 用户空间的虚拟地址
+    let vaddr: VirtAddr = (_ti as usize).into();
+    let offset = vaddr.page_offset();
+    let ppn = tran_vir_to_phy(token, vaddr);
+    let start_addr = PhysAddr::from(ppn);
+    let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
+    let ti = phy_addr.get_mut::<TaskInfo>();
+    *ti = TaskInfo {
+        status,
+        syscall_times,
+        time,
+    };
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -146,7 +179,14 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    // 未按页对齐
+    if _start % 4096 != 0 {
+        return -1;
+    }
+    if (_port & !0x7 != 0) || (_port & 0x7 == 0) {
+        return -1;
+    }
+    mmap(_start, _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
@@ -155,7 +195,10 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start % PAGE_SIZE != 0 || _len % PAGE_SIZE != 0 {
+        return -1;
+    }
+    unmmap(_start, _len)
 }
 
 /// change data segment size
@@ -192,5 +235,11 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio <= 1 {
+        return -1;
+    } else {
+        let current_task = current_task().unwrap();
+        current_task.set_priority(_prio);
+        return _prio;
+    }
 }

@@ -21,7 +21,10 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::loader::get_app_data_by_name;
+use crate::{
+    loader::get_app_data_by_name,
+    mm::{MapPermission, VirtAddr, VirtPageNum}, config::PAGE_SIZE,
+};
 use alloc::sync::Arc;
 use lazy_static::*;
 pub use manager::{fetch_task, TaskManager};
@@ -32,17 +35,18 @@ pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 pub use manager::add_task;
 pub use processor::{
-    current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
+    current_task, current_trap_cx, current_user_token, get_current_task_state, get_init_time,
+    get_tcb_syscall_times, run_tasks, schedule, set_tcb_syscall_times, take_current_task,
     Processor,
 };
 /// Suspend the current 'Running' task and run the next task in task list.
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
     let task = take_current_task().unwrap();
-
     // ---- access current TCB exclusively
     let mut task_inner = task.inner_exclusive_access();
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
+
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
     drop(task_inner);
@@ -50,6 +54,7 @@ pub fn suspend_current_and_run_next() {
 
     // push back to ready queue.
     add_task(task);
+
     // jump to scheduling cycle
     schedule(task_cx_ptr);
 }
@@ -61,7 +66,7 @@ pub const IDLE_PID: usize = 0;
 pub fn exit_current_and_run_next(exit_code: i32) {
     // take from Processor
     let task = take_current_task().unwrap();
-
+    // task.set_stride(0);
     let pid = task.getpid();
     if pid == IDLE_PID {
         println!(
@@ -115,3 +120,66 @@ lazy_static! {
 pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
+
+/// do a map
+pub fn mmap(
+    // token: usize,
+    start: usize,
+    //mut vpn_vec: Vec<VirtPageNum>,
+    len: usize,
+    port: usize,
+) -> isize {
+    let end = start + len;
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let start_vpn = VirtPageNum::from(start / PAGE_SIZE);
+    let end_vpn = VirtPageNum::from(end / PAGE_SIZE);
+    let mut map_perm = MapPermission::U;
+    // bits += 1; // v
+    if port & 0x1 == 1 {
+        map_perm |= MapPermission::R; // r
+    }
+    if (port >> 1) & 0x1 == 1 {
+        map_perm |= MapPermission::W; // w
+    }
+    if (port >> 2) & 0x1 == 1 {
+        map_perm |= MapPermission::X; // x
+    }
+    for vpn in start_vpn.0..end_vpn.0 {
+        // have been alloced
+        if inner.memory_set.find_vpn(VirtPageNum(vpn)) {
+            return -1;
+        }
+    }
+    inner.memory_set.insert_framed_area(VirtAddr::from(start_vpn), VirtAddr::from(end_vpn), map_perm);
+    // check
+    for vpn in start_vpn.0..end_vpn.0 {
+        // have been alloced
+        if !inner.memory_set.find_vpn(VirtPageNum(vpn)) {
+            return -1;
+        }
+    }
+    0
+}
+
+/// unmap
+pub fn unmmap(start: usize, len: usize) -> isize {
+    // let page_count = len / 4096;
+    let end = start + len;
+    let start_vpn = VirtPageNum::from(start / PAGE_SIZE);
+    let end_vpn = VirtPageNum::from(end / PAGE_SIZE);
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    // vpn exist or not
+    for vpn in start_vpn.0..end_vpn.0 {
+        // not find vpn
+        if !inner.memory_set.find_vpn(VirtPageNum(vpn)) {
+            return -1;
+        }
+    }
+    for vpn in start_vpn.0..end_vpn.0 {
+        inner.memory_set.delete_pte(VirtPageNum(vpn));
+    }
+    0
+}
+

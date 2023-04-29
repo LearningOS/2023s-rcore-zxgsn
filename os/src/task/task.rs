@@ -71,7 +71,7 @@ pub struct TaskControlBlockInner {
     pub program_brk: usize,
 
     /// the beginning time
-    pub time: usize,
+    pub time: Option<usize>,
 
     /// syscall_times
     pub tcb_syscall_times: [u32; MAX_SYSCALL_NUM],
@@ -99,7 +99,7 @@ impl TaskControlBlockInner {
         self.get_status() == TaskStatus::Zombie
     }
     pub fn get_init_time(&self) -> usize{
-        self.time
+        self.time.unwrap()
     }
 
     /// get status
@@ -108,8 +108,8 @@ impl TaskControlBlockInner {
     }
 
     /// get syscall_times
-    pub fn get_tcb_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
-        self.tcb_syscall_times
+    pub fn get_tcb_syscall_times(&mut self) -> &mut [u32; MAX_SYSCALL_NUM] {
+        &mut self.tcb_syscall_times
     }
 /*
     /// set syscall_times
@@ -151,7 +151,7 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     stride: 0,
                     priority: 16,
-                    time: 0,
+                    time: None,
                     tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
@@ -228,7 +228,7 @@ impl TaskControlBlock {
                     program_brk: parent_inner.program_brk,
                     stride: 0,
                     priority: 16,
-                    time: 0,
+                    time: None,
                     tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
@@ -275,7 +275,7 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     stride: 0,
                     priority: 16,
-                    time: 0,
+                    time: None,
                     tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },

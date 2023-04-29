@@ -64,7 +64,7 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
-            task_inner.time = get_time_ms();
+            task_inner.time .get_or_insert(get_time_ms());
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -107,8 +107,8 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// increase the syscall time
 pub fn add_syscall_times(syscall_id: usize) {
     let task = current_task().unwrap();
-    let inner = task.inner_exclusive_access();
-    let mut syscall_times = inner.get_tcb_syscall_times();
+    let mut inner = task.inner_exclusive_access();
+    let syscall_times = inner.get_tcb_syscall_times();
     syscall_times[syscall_id] += 1;
     // println!("here");
     // println!("{}", syscall_times[syscall_id]);

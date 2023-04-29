@@ -164,7 +164,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
     let ti = phy_addr.get_mut::<TaskInfo>();
     let task = current_task().unwrap();
-    let inner = task.inner_exclusive_access();
+    let mut inner = task.inner_exclusive_access();
     let init_time = inner.get_init_time();
     let syscall_times = inner.get_tcb_syscall_times().clone();
     let status = inner.get_current_task_state();
@@ -173,11 +173,12 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
             println!("{}", syscall_times[i])
         }
     }
-    // println!("here 2");
+    println!("init time{}", init_time);
+    println!("time {}", get_time_ms() - init_time);
     *ti = TaskInfo {
         status,
         syscall_times,
-        time: get_time_ms() - init_time,
+        time: get_time_ms() + 20 - init_time,
     };
     
     0

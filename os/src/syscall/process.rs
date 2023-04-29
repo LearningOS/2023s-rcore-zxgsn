@@ -156,7 +156,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let token = current_user_token();
     // println!("here 1");
     // let usr_token = current_user_token();
-    // 用户空间的虚拟地址
+    // 用户空间的虚拟地址 
     let vaddr: VirtAddr = (_ti as usize).into();
     let offset = vaddr.page_offset();
     let ppn = tran_vir_to_phy(token, vaddr);

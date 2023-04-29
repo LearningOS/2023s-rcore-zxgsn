@@ -4,7 +4,7 @@ use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
-use crate::timer::get_time_ms;
+// use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
@@ -98,6 +98,24 @@ impl TaskControlBlockInner {
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
     }
+    pub fn get_init_time(&self) -> usize{
+        self.time
+    }
+
+    /// get status
+    pub fn get_current_task_state(&self) -> TaskStatus {
+        self.task_status
+    }
+
+    /// get syscall_times
+    pub fn get_tcb_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        self.tcb_syscall_times
+    }
+/*
+    /// set syscall_times
+    pub fn set_tcb_syscall_times(&mut self, syscall_id : usize) {
+        self.tcb_syscall_times[syscall_id] += 1;
+    }*/
 }
 
 impl TaskControlBlock {
@@ -133,12 +151,11 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     stride: 0,
                     priority: 16,
-                    time: get_time_ms(),
+                    time: 0,
                     tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
         };
-
         // prepare TrapContext in user space
         let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
         *trap_cx = TrapContext::app_init_context(
@@ -211,7 +228,7 @@ impl TaskControlBlock {
                     program_brk: parent_inner.program_brk,
                     stride: 0,
                     priority: 16,
-                    time: get_time_ms(),
+                    time: 0,
                     tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
@@ -258,7 +275,7 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     stride: 0,
                     priority: 16,
-                    time: get_time_ms(),
+                    time: 0,
                     tcb_syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
@@ -333,12 +350,6 @@ impl TaskControlBlock {
     pub fn get_stride(&self) -> isize {
         let inner = self.inner.exclusive_access();
         inner.stride
-    }
-
-    /// get init time
-    pub fn get_init_time(&self) -> usize {
-        let inner = self.inner.exclusive_access();
-        inner.time
     }
 }
 

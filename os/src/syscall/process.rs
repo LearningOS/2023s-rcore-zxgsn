@@ -7,7 +7,7 @@ use crate::{
     mm::{translated_refmut, translated_str, VirtAddr, PhysAddr, tran_vir_to_phy},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus, get_current_task_state, get_tcb_syscall_times, get_init_time, mmap, unmmap,
+        suspend_current_and_run_next, TaskStatus, mmap, unmmap,
     }, timer::{get_time_us, get_time_ms},
 };
 
@@ -152,11 +152,9 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info",
         current_task().unwrap().pid.0
     );
-    let status = get_current_task_state();
-    let time = get_time_ms() - get_init_time();
-    let syscall_times = get_tcb_syscall_times();
-
+    // println!("here 0");
     let token = current_user_token();
+    // println!("here 1");
     // let usr_token = current_user_token();
     // 用户空间的虚拟地址
     let vaddr: VirtAddr = (_ti as usize).into();
@@ -165,11 +163,23 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let start_addr = PhysAddr::from(ppn);
     let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
     let ti = phy_addr.get_mut::<TaskInfo>();
+    let task = current_task().unwrap();
+    let inner = task.inner_exclusive_access();
+    let init_time = inner.get_init_time();
+    let syscall_times = inner.get_tcb_syscall_times().clone();
+    let status = inner.get_current_task_state();
+    for i in 0..syscall_times.len() {
+        if syscall_times[i] != 0 {
+            println!("{}", syscall_times[i])
+        }
+    }
+    // println!("here 2");
     *ti = TaskInfo {
         status,
         syscall_times,
-        time,
+        time: get_time_ms() - init_time,
     };
+    
     0
 }
 

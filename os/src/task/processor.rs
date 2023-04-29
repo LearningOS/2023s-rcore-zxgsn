@@ -7,8 +7,9 @@
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
-use crate::config::MAX_SYSCALL_NUM;
+// use crate::config::MAX_SYSCALL_NUM;
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -46,25 +47,6 @@ impl Processor {
         self.current.as_ref().map(Arc::clone)
     }
 
-    /// get status
-    pub fn get_current_task_state(&mut self) -> TaskStatus {
-        self.current.take().unwrap().inner_exclusive_access().task_status
-    }
-
-    /// get time
-    pub fn get_init_time(&mut self) -> usize{
-        self.current.take().unwrap().inner_exclusive_access().time
-    }
-
-    /// get syscall_times
-    pub fn get_tcb_syscall_times(&mut self) -> [u32; MAX_SYSCALL_NUM] {
-        self.current.take().unwrap().inner_exclusive_access().tcb_syscall_times
-    }
-
-    /// set syscall_times
-    pub fn set_tcb_syscall_times(&mut self, syscall_id : usize) {
-        self.current.take().unwrap().inner_exclusive_access().tcb_syscall_times[syscall_id] += 1;
-    }
 }
 
 lazy_static! {
@@ -79,12 +61,10 @@ pub fn run_tasks() {
         if let Some(task) = fetch_task() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
             // access coming task TCB exclusively
-            // let priority = task.get_priority();
-            // task.inner_exclusive_access().stride = priority / 255;
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
-            
+            task_inner.time = get_time_ms();
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -124,6 +104,16 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .get_trap_cx()
 }
 
+/// increase the syscall time
+pub fn add_syscall_times(syscall_id: usize) {
+    let task = current_task().unwrap();
+    let inner = task.inner_exclusive_access();
+    let mut syscall_times = inner.get_tcb_syscall_times();
+    syscall_times[syscall_id] += 1;
+    // println!("here");
+    // println!("{}", syscall_times[syscall_id]);
+}
+
 ///Return to idle control flow for new scheduling
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     let mut processor = PROCESSOR.exclusive_access();
@@ -133,7 +123,7 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
 }
-
+/*
 /// get state
 pub fn get_current_task_state() -> TaskStatus{
     PROCESSOR.exclusive_access().get_current_task_state()
@@ -153,3 +143,4 @@ pub fn get_tcb_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
 pub fn set_tcb_syscall_times(syscall_id : usize) {
     PROCESSOR.exclusive_access().set_tcb_syscall_times(syscall_id);
 }
+*/

@@ -22,7 +22,7 @@ mod switch;
 #[allow(rustdoc::private_intra_doc_links)]
 mod task;
 
-use crate::fs::{open_file, OpenFlags};
+use crate::{fs::{open_file, OpenFlags}, mm::{VirtPageNum, MapPermission, VirtAddr}, config::PAGE_SIZE};
 use alloc::sync::Arc;
 pub use context::TaskContext;
 use lazy_static::*;
@@ -119,4 +119,57 @@ lazy_static! {
 ///Add init process to the manager
 pub fn add_initproc() {
     add_task(INITPROC.clone());
+}
+
+/// do a map
+pub fn mmap(
+    // token: usize,
+    start: usize,
+    //mut vpn_vec: Vec<VirtPageNum>,
+    len: usize,
+    port: usize,
+) -> isize {
+    let end = start + len;
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let start_vpn = VirtPageNum::from(start / PAGE_SIZE);
+    let end_vpn = VirtPageNum::from(end / PAGE_SIZE);
+    
+    for vpn in start_vpn.0..end_vpn.0 {
+        // have been alloced
+        if inner.memory_set.find_vpn(VirtPageNum(vpn)) {
+            return -1;
+        }
+    }
+    let permission = MapPermission::from_bits(((port << 1) | 16) as u8);
+    inner.memory_set.insert_framed_area(VirtAddr::from(start_vpn), VirtAddr::from(end_vpn), permission.unwrap());
+    // check
+    for vpn in start_vpn.0..end_vpn.0 {
+        // have been alloced
+        if !inner.memory_set.find_vpn(VirtPageNum(vpn)) {
+            return -1;
+        }
+    }
+    0
+}
+
+/// unmap
+pub fn unmmap(start: usize, len: usize) -> isize {
+    // let page_count = len / 4096;
+    let end = start + len;
+    let start_vpn = VirtPageNum::from(start / PAGE_SIZE);
+    let end_vpn = VirtPageNum::from(end / PAGE_SIZE);
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    // vpn exist or not
+    for vpn in start_vpn.0..end_vpn.0 {
+        // not find vpn
+        if !inner.memory_set.find_vpn(VirtPageNum(vpn)) {
+            return -1;
+        }
+    }
+    for vpn in start_vpn.0..end_vpn.0 {
+        inner.memory_set.delete_pte(VirtPageNum(vpn));
+    }
+    0
 }

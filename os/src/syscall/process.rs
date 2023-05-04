@@ -8,7 +8,7 @@ use crate::{
     mm::{translated_refmut, translated_str, PhysAddr, tran_vir_to_phy, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        suspend_current_and_run_next, TaskStatus, mmap, unmmap,
     }, timer::{get_time_ms, get_time_us},
 };
 
@@ -228,11 +228,10 @@ pub fn sys_spawn(_path: *const u8) -> isize {
     let current_task = current_task().unwrap();
     let token = current_user_token();
     let path = translated_str(token, _path);
-    if let Some(data) = get_app_data_by_name(path.as_str()) {
-        let new_task = current_task.spawn(data);
+    if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let all_data = app_inode.read_all();
+        let new_task = current_task.spawn(all_data.as_slice());
         let new_pid = new_task.pid.0;
-        // add_task(new_task);
-        // new_task.exec(data);
         new_pid as isize
     } else {
         -1

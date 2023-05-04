@@ -1,6 +1,7 @@
 //! File and filesystem-related syscalls
-use crate::fs::{open_file, OpenFlags, Stat};
-use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
+
+use crate::fs::{open_file, OpenFlags, Stat, link, unlink_file};
+use crate::mm::{translated_byte_buffer, translated_str, UserBuffer, tran_vir_to_phy, VirtAddr, PhysAddr};
 use crate::task::{current_task, current_user_token};
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
@@ -77,27 +78,62 @@ pub fn sys_close(fd: usize) -> isize {
 
 /// YOUR JOB: Implement fstat.
 pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel:pid[{}] sys_fstat", current_task().unwrap().pid.0);
+    println!("fstat begin");
+    let token = current_user_token();
+    let task = current_task().unwrap();
+    let inner = task.inner_exclusive_access();
+    if _fd >= inner.fd_table.len() {
+        return -1;
+    }
+    if inner.fd_table[_fd].is_none() {
+        return -1;
+    }
+    
+    // println!("fstat end0");
+    let vaddr: VirtAddr = (_st as usize).into();
+    // println!("fstat end-1");
+    let offset = vaddr.page_offset();
+    // println!("fstat end1");
+    let ppn = tran_vir_to_phy(token, vaddr);
+    let start_addr = PhysAddr::from(ppn);
+    let phy_addr = PhysAddr::from(usize::from(start_addr) + offset);
+    let st = phy_addr.get_mut::<Stat>();
+    // println!("fstat end2");
+    if let Some(file) = &inner.fd_table[_fd] {
+        println!("fstat end");
+        *st = file.stat();
+        0
+    } else {
+        -1
+    }
 }
 
 /// YOUR JOB: Implement linkat.
 pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel:pid[{}] sys_linkat", current_task().unwrap().pid.0);
+    // let task = current_task().unwrap();
+    // let mut inner = task.inner_exclusive_access();
+    println!("link begin");
+    let token = current_user_token();
+    let old_name = translated_str(token, _old_name);
+    let new_name = translated_str(token, _new_name);
+    if old_name.eq(&new_name) {
+        return -1;
+    };
+    link(old_name, new_name);
+    println!("link end");
+    0
 }
 
 /// YOUR JOB: Implement unlinkat.
 pub fn sys_unlinkat(_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    println!("unlink begin");
+    trace!("kernel:pid[{}] sys_unlinkat", current_task().unwrap().pid.0);
+    let token = current_user_token();
+    let name = translated_str(token, _name);
+    if unlink_file(&name).is_none() {
+        return -1;
+    }
+    0
 }

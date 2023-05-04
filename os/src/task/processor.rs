@@ -100,6 +100,16 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .get_trap_cx()
 }
 
+/// increase the syscall time
+pub fn add_syscall_times(syscall_id: usize) {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let syscall_times = inner.get_tcb_syscall_times();
+    syscall_times[syscall_id] += 1;
+    // println!("here");
+    // println!("{}", syscall_times[syscall_id]);
+}
+
 ///Return to idle control flow for new scheduling
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     let mut processor = PROCESSOR.exclusive_access();

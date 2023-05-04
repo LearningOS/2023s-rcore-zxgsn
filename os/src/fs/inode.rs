@@ -4,12 +4,13 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File, StatMode, Stat};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
-use alloc::sync::Arc;
+use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::{sync::Arc};
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
@@ -124,6 +125,16 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
+/// link
+pub fn link(old: String, new: String) {
+    ROOT_INODE.link(new.as_str(), old.as_str());
+}
+
+/// unlink
+pub fn unlink_file(name: &str) -> Option<()> {
+    ROOT_INODE.unlink(name)
+}
+
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable
@@ -154,5 +165,23 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn stat(&self) -> Stat{
+        println!("stat begin");
+        let inner = self.inner.exclusive_access();
+        let inode = inner.inode.clone();
+        let inode_id = ROOT_INODE.get_id(inode);
+        let linkcount = ROOT_INODE.count_link(inode_id as usize);
+        println!("link count {}", linkcount);
+        let stat = Stat {
+            dev:0,
+            ino: inode_id as u64,
+            mode: StatMode::FILE,
+            nlink: linkcount,
+            pad: [0; 7],
+        };
+        println!("stat end");
+        stat
+       
     }
 }

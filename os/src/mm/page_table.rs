@@ -156,6 +156,18 @@ impl PageTable {
     }
 }
 
+/// get ppn
+pub fn tran_vir_to_phy(usr_token: usize, vaddr: VirtAddr) -> PhysPageNum {
+    let page_table = PageTable::from_token(usr_token);
+    let vpn = vaddr.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    // let kernel_token = KERNEL_SPACE.exclusive_access().token();
+    // PageTable::from_token(kernel_token).map(vpn, ppn, PTEFlags::R | PTEFlags::W | PTEFlags::X);
+    ppn
+
+    // let page = ppn.get_mut();
+}
+
 /// Create mutable Vec<u8> slice in kernel space from ptr in other address space. NOTICE: the content pointed to by the pointer `ptr` can cross physical pages.
 pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&'static mut [u8]> {
     let page_table = PageTable::from_token(token);

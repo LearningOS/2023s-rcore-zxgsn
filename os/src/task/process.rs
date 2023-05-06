@@ -49,6 +49,19 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    /// detection
+    pub deadlock_detection: bool,
+    // 因为每个锁的数量只有一个，所以此时不需要avaliable向量
+    /// mutex alloc
+    pub mutex_alloc: Vec<Option<usize>>, // 锁的分配情况 [mutex_id] -> tid
+    /// mutex require
+    pub mutex_request: Vec<Option<usize>>, // 线程锁的需求情况 [tid] -> mutex_id
+    /// semaphore avaliable
+    pub semaphore_available: Vec<usize>, // [sid] -> num
+    /// semaphore_alloc
+    pub semaphore_alloc: Vec<Vec<usize>>, // [tid] -> (sid, num)
+    /// semaphore_request
+    pub semaphore_request: Vec<Vec<usize>>, // [tid] -> (sid, num)
 }
 
 impl ProcessControlBlockInner {
@@ -119,6 +132,12 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detection: false,
+                    mutex_alloc: Vec::new(),
+                    mutex_request: Vec::new(),
+                    semaphore_available: Vec::new(),
+                    semaphore_alloc: Vec::new(),
+                    semaphore_request: Vec::new(),
                 })
             },
         });
@@ -144,6 +163,15 @@ impl ProcessControlBlock {
         // add main thread to the process
         let mut process_inner = process.inner_exclusive_access();
         process_inner.tasks.push(Some(Arc::clone(&task)));
+        process_inner.semaphore_request.resize(17, Vec::new());
+        for i in 0..process_inner.semaphore_request.len() {
+            process_inner.semaphore_request[i].resize(17, 0);
+        }
+        // process_inner.semaphore_available.resize(10, 0);
+        process_inner.semaphore_alloc.resize(17, Vec::new());
+        for i in 0..process_inner.semaphore_alloc.len() {
+            process_inner.semaphore_alloc[i].resize(17, 0);
+        }
         drop(process_inner);
         insert_into_pid2process(process.getpid(), Arc::clone(&process));
         // add main thread to scheduler
@@ -245,6 +273,12 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detection: false,
+                    mutex_alloc: Vec::new(),
+                    mutex_request: Vec::new(),
+                    semaphore_available: Vec::new(),
+                    semaphore_alloc: Vec::new(),
+                    semaphore_request: Vec::new(),
                 })
             },
         });
@@ -267,6 +301,15 @@ impl ProcessControlBlock {
         // attach task to child process
         let mut child_inner = child.inner_exclusive_access();
         child_inner.tasks.push(Some(Arc::clone(&task)));
+        child_inner.semaphore_request.resize(17, Vec::new());
+        for i in 0..child_inner.semaphore_request.len() {
+            child_inner.semaphore_request[i].resize(17, 0);
+        }
+        // process_inner.semaphore_available.resize(10, 0);
+        child_inner.semaphore_alloc.resize(17, Vec::new());
+        for i in 0..child_inner.semaphore_alloc.len() {
+            child_inner.semaphore_alloc[i].resize(17, 0);
+        }
         drop(child_inner);
         // modify kstack_top in trap_cx of this thread
         let task_inner = task.inner_exclusive_access();

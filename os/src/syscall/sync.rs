@@ -177,7 +177,7 @@ pub fn sys_semaphore_create(res_count: usize) -> isize {
             .push(Some(Arc::new(Semaphore::new(res_count))));
         process_inner.semaphore_list.len() - 1
     };
-
+    /*
     if let Some(id) = process_inner
         .semaphore_list
         .iter()
@@ -186,15 +186,16 @@ pub fn sys_semaphore_create(res_count: usize) -> isize {
         .map(|(id, _)| id)
     {
         process_inner.semaphore_available[id] += res_count;
-        
+
     } else {
         process_inner
             .semaphore_available
             .push(res_count);
-        
+
     };
     // println!("ava_size1 {}", process_inner.semaphore_available.len());
-    
+    */
+    process_inner.semaphore_available[id] = res_count;
     id as isize
 }
 /// semaphore up syscall
@@ -252,8 +253,8 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
     // 此时的死锁检测多了一个维度
     let sid = sem_id;
-    
-    process_inner.semaphore_request[tid][sid] = 1;
+
+    process_inner.semaphore_request[tid][sid] += 1;
     // println!("process {} need sem {}", tid, sid);
     // step1
     let mut work = process_inner.semaphore_available.clone();
@@ -277,10 +278,11 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     */
     // println!("here2");
     // step2
+    /*
     while let Some((new_tid, _)) = finish.iter().enumerate().find(|(_, val)| **val == false) {
         // println!("here3");
         if unfinish.contains(&new_tid) {
-            // println!("process: {} need: sem id{}", new_tid, sid);
+            println!("process: {} need: sem id{}", new_tid, sid);
             return -0xdead;
         }
         unfinish.insert(new_tid);
@@ -297,6 +299,39 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
             // println!("remove {}", new_tid);
         }
         // println!("here4");
+    }*/
+    let mut help = 0;
+    let det = process_inner.deadlock_detection;
+    if det {
+        loop {
+            
+            let mut incount = 0;
+            for new_tid in 0..finish.len() {
+                if finish[new_tid] == false {
+                    // help >= 3  指的是进行三次资源分配再判断死锁
+                    if help >= 3 && unfinish.contains(&new_tid) {
+                        println!("process: {} need: sem id{}", new_tid, sid);
+                        return -0xdead;
+                    }
+                    unfinish.insert(new_tid);
+                    if process_inner.semaphore_request[new_tid][sid] <= work[sid] {
+                        // step3
+                        // println!("here0");
+                        work[sid] += process_inner.semaphore_alloc[new_tid][sid];
+                        // println!("here10");
+                        finish[new_tid] = true;
+                        unfinish.remove(&new_tid);
+                        break;
+                    }
+                } else {
+                    incount += 1;
+                }
+            }
+            if incount >= finish.len() - 1 {
+                break;
+            }
+            help += 1;
+        }
     }
     // println!("here5");
     // println!("over");
@@ -308,7 +343,7 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     // let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
     process_inner.semaphore_alloc[tid][sem_id] += 1;
     process_inner.semaphore_available[sem_id] -= 1;
-    process_inner.semaphore_request[tid][sem_id] = 0;
+    process_inner.semaphore_request[tid][sem_id] -= 1;
     0
 }
 /// condvar create syscall

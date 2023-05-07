@@ -163,14 +163,15 @@ impl ProcessControlBlock {
         // add main thread to the process
         let mut process_inner = process.inner_exclusive_access();
         process_inner.tasks.push(Some(Arc::clone(&task)));
-        process_inner.semaphore_request.resize(17, Vec::new());
+        process_inner.semaphore_request.resize(16, Vec::new());
         for i in 0..process_inner.semaphore_request.len() {
-            process_inner.semaphore_request[i].resize(17, 0);
+            process_inner.semaphore_request[i].resize(16, 0);
         }
         // process_inner.semaphore_available.resize(10, 0);
-        process_inner.semaphore_alloc.resize(17, Vec::new());
+        process_inner.semaphore_available.resize(16, 0);
+        process_inner.semaphore_alloc.resize(16, Vec::new());
         for i in 0..process_inner.semaphore_alloc.len() {
-            process_inner.semaphore_alloc[i].resize(17, 0);
+            process_inner.semaphore_alloc[i].resize(16, 0);
         }
         drop(process_inner);
         insert_into_pid2process(process.getpid(), Arc::clone(&process));
@@ -301,15 +302,16 @@ impl ProcessControlBlock {
         // attach task to child process
         let mut child_inner = child.inner_exclusive_access();
         child_inner.tasks.push(Some(Arc::clone(&task)));
-        child_inner.semaphore_request.resize(17, Vec::new());
+        child_inner.semaphore_request.resize(16, Vec::new());
         for i in 0..child_inner.semaphore_request.len() {
-            child_inner.semaphore_request[i].resize(17, 0);
+            child_inner.semaphore_request[i].resize(16, 0);
         }
         // process_inner.semaphore_available.resize(10, 0);
-        child_inner.semaphore_alloc.resize(17, Vec::new());
+        child_inner.semaphore_alloc.resize(16, Vec::new());
         for i in 0..child_inner.semaphore_alloc.len() {
-            child_inner.semaphore_alloc[i].resize(17, 0);
+            child_inner.semaphore_alloc[i].resize(16, 0);
         }
+        child_inner.semaphore_available.resize(16, 0);
         drop(child_inner);
         // modify kstack_top in trap_cx of this thread
         let task_inner = task.inner_exclusive_access();
